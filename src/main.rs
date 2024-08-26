@@ -1,8 +1,10 @@
-// A simple ray tracer built by translating the tutorial
-// https://raytracing.github.io/books/RayTracingInOneWeekend.html
-// to Rust
+use std::sync::Arc;
+use rayon::prelude::*;
+use rayon::ThreadPoolBuilder;
+use indicatif::ProgressBar;
+use std::cell::RefCell;
+use rand::prelude::*;
 
-// TODO: pull these mod declarations out into a separate lib.rs
 mod camera;
 mod hittable;
 mod hittable_list;
@@ -19,7 +21,10 @@ use ray::Ray;
 use sphere::Sphere;
 use vec3::Vec3;
 
-use rand::prelude::*;
+// Create a thread-local RNG
+thread_local! {
+    static THREAD_RNG: RefCell<ThreadRng> = RefCell::new(rand::thread_rng());
+}
 
 fn color(r: &Ray, world: &HittableList, depth: i32) -> Vec3 {
     let _rec = HitRecord::default();
@@ -42,26 +47,29 @@ fn color(r: &Ray, world: &HittableList, depth: i32) -> Vec3 {
 }
 
 fn random_in_unit_sphere() -> Vec3 {
-    let mut rng = rand::thread_rng();
-    let unit_vec = Vec3::new(1.0, 1.0, 1.0);
+    THREAD_RNG.with(|rng| {
+        let mut rng = rng.borrow_mut();
+        let unit_vec = Vec3::new(1.0, 1.0, 1.0);
 
-    loop {
-        let p = 2.0 * Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) - unit_vec;
-        if p.squared_length() < 1.0 {
-            return p;
+        loop {
+            let p = 2.0 * Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) - unit_vec;
+            if p.squared_length() < 1.0 {
+                return p;
+            }
         }
-    }
+    })
 }
 
 fn main() {
-    //println!("A raytracer in Rust!");
-
     let width = 800;
     let height = 400;
     let samples = 100;
     let max_value = 255;
+    
+    // Set the number of worker threads
+    let num_threads = 16;
 
-    let mut list: Vec<Box<dyn Hittable>> = Vec::new();
+    let mut list: Vec<Box<dyn Hittable + Send + Sync>> = Vec::new();
 
     list.push(Box::new(Sphere::sphere(
         Vec3::new(0.0, 0.0, -1.0),
@@ -99,15 +107,13 @@ fn main() {
         material::Material::Dielectric { ref_idx: 1.5 },
     )));
 
-    let world = HittableList::new(list);
+    let world = Arc::new(HittableList::new(list));
 
     let look_from = Vec3::new(3.0, 3.0, 2.0);
     let look_at = Vec3::new(0.0, 0.0, -1.0);
 
     let dist_to_focus = (look_from - look_at).length();
     let aperture = 2.0;
-
-    // let R = (std::f32::consts::PI/4.0).cos();
 
     let camera = Camera::new(
         look_from,
@@ -116,40 +122,51 @@ fn main() {
         20.0,
         width as f32 / height as f32,
         aperture,
-        dist_to_focus, // Vec3::new(-2.0, 0.0, 1.0),
-                       // Vec3::new(0.0, 0.0, -1.0),
-                       // Vec3::new(0.0, 1.0, 0.0),
-                       // 30.0,
-                       // width as f32 / height as f32,
+        dist_to_focus,
     );
 
-    let mut rng = rand::thread_rng();
-
-    // we use a plan txt ppm to start building images
+    let bar = ProgressBar::new((height * width + 1) as u64);
+    bar.inc(1);
     println!("P3\n{} {}\n{}", width, height, max_value);
 
-    for j in (0..height).rev() {
-        for i in 0..width {
-            let mut col = Vec3::default();
+    // Build a custom thread pool with the specified number of threads
+    let pool = ThreadPoolBuilder::new().num_threads(num_threads).build().unwrap();
 
-            for _ in 0..samples {
-                let u = (i as f32 + rng.gen::<f32>()) / width as f32;
-                let v = (j as f32 + rng.gen::<f32>()) / height as f32;
+    let pixels: Vec<Vec3> = pool.install(|| {
+        (0..height)
+            .into_par_iter()
+            .rev()
+            .flat_map(|j| {
+                (0..width)
+                    .into_par_iter()
+                    .map(|i| {
+                        let mut col = Vec3::default();
 
-                let r = &camera.get_ray(u, v);
+                        for _ in 0..samples {
+                            let u = (i as f32 + THREAD_RNG.with(|rng| rng.borrow_mut().gen::<f32>())) / width as f32;
+                            let v = (j as f32 + THREAD_RNG.with(|rng| rng.borrow_mut().gen::<f32>())) / height as f32;
 
-                col = col + color(&r, &world, 0);
-            }
+                            let r = camera.get_ray(u, v);
+                            col = col + color(&r, &world, 0);
+                        }
 
-            col = col / samples as f32;
+                        col = col / samples as f32;
+                        col = Vec3::new(col.r().sqrt(), col.g().sqrt(), col.b().sqrt());
+                        bar.inc(1);
+                        col
+                    })
+                    .collect::<Vec<Vec3>>()
+            })
+            .collect()
+    });
 
-            col = Vec3::new(col.r().sqrt(), col.g().sqrt(), col.b().sqrt());
+    bar.finish();
 
-            let ir = (255.99 * col.r()) as i32;
-            let ig = (255.99 * col.g()) as i32;
-            let ib = (255.99 * col.b()) as i32;
+    for pixel in pixels {
+        let ir = (255.99 * pixel.r()) as i32;
+        let ig = (255.99 * pixel.g()) as i32;
+        let ib = (255.99 * pixel.b()) as i32;
 
-            println!("{} {} {}", ir, ig, ib);
-        }
+        println!("{} {} {}", ir, ig, ib);
     }
 }

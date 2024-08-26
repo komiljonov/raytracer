@@ -10,7 +10,7 @@ pub struct Camera {
     lens_radius: f32,
     u: Vec3,
     v: Vec3,
-    w: Vec3,
+    // w: Vec3,
 }
 
 impl Camera {
@@ -50,7 +50,7 @@ impl Camera {
             lens_radius,
             u,
             v,
-            w,
+            // w,
         }
     }
 
@@ -66,14 +66,13 @@ impl Camera {
 }
 
 fn random_in_unit_disk() -> Vec3 {
-    // let mut p = Vec3::default();
-
     let mut rng = rand::thread_rng();
 
     loop {
         let p = 2.0 * Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), 0.0) - Vec3::new(1.0, 1.0, 0.0);
 
-        if Vec3::dot(&p, &p) < 0.0 {
+        // The dot product should be less than 1.0 to ensure the point is inside the unit disk
+        if Vec3::dot(&p, &p) < 1.0 {
             return p;
         }
     }

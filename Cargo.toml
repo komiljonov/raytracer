@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 rand = "0.7.3"
+rayon = "1.6"
+indicatif = "0.16"

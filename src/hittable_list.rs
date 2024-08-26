@@ -2,39 +2,27 @@ use crate::hittable::{HitRecord, Hittable};
 use crate::ray::Ray;
 
 pub struct HittableList {
-    list: Vec<Box<dyn Hittable>>,
+    list: Vec<Box<dyn Hittable + Send + Sync>>,
 }
 
 impl HittableList {
-    pub fn new(list: Vec<Box<dyn Hittable>>) -> HittableList {
+    pub fn new(list: Vec<Box<dyn Hittable + Send + Sync>>) -> HittableList {
         HittableList { list }
     }
 }
 
 impl Hittable for HittableList {
-    fn hit(
-        &self,
-        r: &Ray,
-        t_min: f32,
-        t_max: f32,
-        //  rec: &mut HitRecord
-    ) -> Option<HitRecord> {
-        // let mut temp_rec = HitRecord::default();
-        // let mut hit_anything = false;
-        let mut hit_record = None;
+    fn hit(&self, r: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
         let mut closest_so_far = t_max;
+        let mut temp_rec = None;
 
         for object in &self.list {
             if let Some(rec) = object.hit(r, t_min, closest_so_far) {
                 closest_so_far = rec.t;
-
-                hit_record = Some(rec);
-
-                // rec.set_t(rec.t);
-                // rec.set_p(rec.p);
-                // rec.set_normal(rec.normal);
+                temp_rec = Some(rec);
             }
         }
-        hit_record
+
+        temp_rec
     }
 }
