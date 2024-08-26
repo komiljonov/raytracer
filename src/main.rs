@@ -33,13 +33,6 @@ fn color(r: &Ray, world: &HittableList, depth: i32) -> Vec3 {
         } else {
             return Vec3::new(0.0, 0.0, 0.0);
         }
-
-        // return 0.5
-        //     * Vec3::new(
-        //         rec.normal().x() + 1.0,
-        //         rec.normal().y() + 1.0,
-        //         rec.normal().z() + 1.0,
-        //     );
     } else {
         let unit_direction = Vec3::unit_vector(&r.direction());
         let t = 0.5 * (unit_direction.y() + 1.0);
@@ -49,13 +42,11 @@ fn color(r: &Ray, world: &HittableList, depth: i32) -> Vec3 {
 }
 
 fn random_in_unit_sphere() -> Vec3 {
-    let mut p = Vec3::default();
     let mut rng = rand::thread_rng();
+    let unit_vec = Vec3::new(1.0, 1.0, 1.0);
 
     loop {
-        p = 2.0 * Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>())
-            - Vec3::new(1.0, 1.0, 1.0);
-
+        let p = 2.0 * Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) - unit_vec;
         if p.squared_length() < 1.0 {
             return p;
         }
@@ -93,7 +84,7 @@ fn main() {
         0.5,
         material::Material::Metal {
             albedo: Vec3::new(0.8, 0.6, 0.2),
-            fuzz: 0.0
+            fuzz: 0.3,
         },
     )));
 
@@ -102,10 +93,35 @@ fn main() {
         0.5,
         material::Material::Dielectric { ref_idx: 1.5 },
     )));
+    list.push(Box::new(Sphere::sphere(
+        Vec3::new(-1.0, 0.0, -1.0),
+        -0.45,
+        material::Material::Dielectric { ref_idx: 1.5 },
+    )));
 
     let world = HittableList::new(list);
 
-    let camera = Camera::new();
+    let look_from = Vec3::new(3.0, 3.0, 2.0);
+    let look_at = Vec3::new(0.0, 0.0, -1.0);
+
+    let dist_to_focus = (look_from - look_at).length();
+    let aperture = 2.0;
+
+    // let R = (std::f32::consts::PI/4.0).cos();
+
+    let camera = Camera::new(
+        look_from,
+        look_at,
+        Vec3::new(0.0, 1.0, 0.0),
+        20.0,
+        width as f32 / height as f32,
+        aperture,
+        dist_to_focus, // Vec3::new(-2.0, 0.0, 1.0),
+                       // Vec3::new(0.0, 0.0, -1.0),
+                       // Vec3::new(0.0, 1.0, 0.0),
+                       // 30.0,
+                       // width as f32 / height as f32,
+    );
 
     let mut rng = rand::thread_rng();
 

@@ -1,6 +1,5 @@
-use std::mem::Discriminant;
-
 use crate::{hittable::HitRecord, random_in_unit_sphere, ray::Ray, vec3::Vec3};
+use rand::Rng;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Material {
@@ -22,78 +21,72 @@ pub fn scatter(
     material: &Material,
     ray_in: &Ray,
     rec: &HitRecord,
-    attentuation: &mut Vec3,
+    attenuation: &mut Vec3,
     scattered: &mut Ray,
 ) -> bool {
     match material {
-        &Material::Lambertian { albedo } => {
+        Material::Lambertian { albedo } => {
             let target = rec.p + rec.normal + random_in_unit_sphere();
-
             *scattered = Ray::new(rec.p, target - rec.p);
-
-            *attentuation = albedo;
-            return true;
+            *attenuation = *albedo;
+            true
         }
         Material::Metal { albedo, fuzz } => {
-            let mut f = 1.0;
-
-            if *fuzz < 1.0 {
-                f = *fuzz;
-            }
-
+            let fuzz = fuzz.min(1.0);
             let reflected = reflect(&Vec3::unit_vector(&ray_in.direction()), &rec.normal);
-            *scattered = Ray::new(rec.p, reflected + f * random_in_unit_sphere());
-            *attentuation = *albedo;
-
-            return Vec3::dot(&scattered.direction(), &rec.normal) > 0.0;
+            *scattered = Ray::new(rec.p, reflected + fuzz * random_in_unit_sphere());
+            *attenuation = *albedo;
+            Vec3::dot(&scattered.direction(), &rec.normal) > 0.0
         }
         Material::Dielectric { ref_idx } => {
-            let mut outward_normal = Vec3::default();
+            let (outward_normal, ni_over_nt, cosine) =
+                if Vec3::dot(&ray_in.direction(), &rec.normal) > 0.0 {
+                    (
+                        -rec.normal,
+                        *ref_idx,
+                        ref_idx * Vec3::dot(&ray_in.direction(), &rec.normal)
+                            / ray_in.direction().length(),
+                    )
+                } else {
+                    (
+                        rec.normal,
+                        1.0 / *ref_idx,
+                        -Vec3::dot(&ray_in.direction(), &rec.normal) / ray_in.direction().length(),
+                    )
+                };
 
-            let _reflected = reflect(&ray_in.direction(), &rec.normal);
+            *attenuation = Vec3::new(1.0, 1.0, 1.0);
 
-            let mut ni_over_nt = 0.0;
-            let _attentuation = Vec3::new(1.0, 1.0, 0.0);
-            let mut refracted = Vec3::default();
+            let refracted = refract(&ray_in.direction(), &outward_normal, ni_over_nt);
+            let reflect_prob = refracted.map(|_| schlick(cosine, *ref_idx)).unwrap_or(1.0);
 
-            if Vec3::dot(&ray_in.direction(), &rec.normal) > 0f32 {
-                outward_normal = -rec.normal;
-
-                ni_over_nt = *ref_idx;
+            let mut rng = rand::thread_rng();
+            *scattered = if rng.gen::<f32>() < reflect_prob {
+                Ray::new(rec.p, reflect(&ray_in.direction(), &rec.normal))
             } else {
-                outward_normal = rec.normal;
-                ni_over_nt = 1.0 / ref_idx;
-            }
+                Ray::new(rec.p, refracted.unwrap())
+            };
 
-            if refract(
-                &ray_in.direction(),
-                &outward_normal,
-                ni_over_nt,
-                &mut refracted,
-            ) {
-                *scattered = Ray::new(rec.p, refracted);
-            } else {
-                *scattered = Ray::new(rec.p, refracted);
-                return false;
-            }
-
-            return true;
+            true
         }
     }
 }
 
-fn refract(v: &Vec3, n: &Vec3, ni_over_nt: f32, refracted: &mut Vec3) -> bool {
+fn schlick(cosine: f32, ref_idx: f32) -> f32 {
+    let mut r0 = (1.0 - ref_idx) / (1.0 + ref_idx);
+    r0 = r0 * r0;
+    r0 + (1.0 - r0) * (1.0 - cosine).powi(5)
+}
+
+fn refract(v: &Vec3, n: &Vec3, ni_over_nt: f32) -> Option<Vec3> {
     let uv = Vec3::unit_vector(v);
-
     let dt = Vec3::dot(&uv, n);
-
     let discriminant = 1.0 - ni_over_nt * ni_over_nt * (1.0 - dt * dt);
 
     if discriminant > 0.0 {
-        *refracted = ni_over_nt * (uv - *n * dt) - *n * discriminant.sqrt();
-        return true;
+        Some(ni_over_nt * (uv - *n * dt) - *n * discriminant.sqrt())
     } else {
-        return false;
+        None
     }
 }
 

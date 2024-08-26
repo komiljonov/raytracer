@@ -39,6 +39,9 @@ pub trait Hittable {
         t_max: f32,
         //  rec: &mut HitRecord
     ) -> Option<HitRecord> {
+        let _ = t_max;
+        let _ = t_min;
+        let _ = r;
         None
     }
 }
