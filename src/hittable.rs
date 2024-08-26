@@ -31,6 +31,10 @@ impl HitRecord {
 
 pub trait Hittable {
     fn hit(&self, r: &Ray, t_min: f32, t_max: f32, rec: &mut HitRecord) -> bool {
+        let _ = r;
+        let _ = rec;
+        let _ = t_max;
+        let _ = t_min;
         false
     }
 }
