@@ -1,7 +1,6 @@
 use crate::vec3::Vec3;
 
-
-#[derive(Debug, Copy,Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Ray {
     a: Vec3,
     b: Vec3,
@@ -9,7 +8,7 @@ pub struct Ray {
 
 impl Ray {
     // Constructor method
-    pub fn ray(a: Vec3, b: Vec3) -> Ray {
+    pub fn new(a: Vec3, b: Vec3) -> Ray {
         Ray { a, b }
     }
 

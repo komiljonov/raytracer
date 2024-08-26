@@ -1,6 +1,6 @@
 use std::ops;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct Vec3 {
     e: [f32; 3],
 }
@@ -10,50 +10,73 @@ impl Vec3 {
         Vec3 { e: [e0, e1, e2] }
     }
 
-    pub fn x(self) -> f32 {
+    #[inline]
+    pub fn x(&self) -> f32 {
         self.e[0]
     }
 
-    pub fn y(self) -> f32 {
+    #[inline]
+    pub fn y(&self) -> f32 {
         self.e[1]
     }
 
-    pub fn z(self) -> f32 {
+    #[inline]
+    pub fn z(&self) -> f32 {
         self.e[2]
     }
 
-    pub fn r(self) -> f32 {
+    #[inline]
+    pub fn r(&self) -> f32 {
         self.e[0]
     }
 
-    pub fn g(self) -> f32 {
+    #[inline]
+    pub fn g(&self) -> f32 {
         self.e[1]
     }
 
-    pub fn b(self) -> f32 {
+    #[inline]
+    pub fn b(&self) -> f32 {
         self.e[2]
     }
 
-
-    pub fn length(self) -> f32 {
+    #[inline]
+    pub fn length(&self) -> f32 {
         (self.e[0] * self.e[0] + self.e[1] * self.e[1] + self.e[2] * self.e[2]).sqrt()
     }
 
+    #[inline]
     pub fn unit_vector(v: &Vec3) -> Vec3 {
         *v / v.length()
+    }
+
+    #[inline]
+    pub fn dot(v1: &Vec3, v2: &Vec3) -> f32 {
+        v1.e[0] * v2.e[0] + v1.e[1] * v2.e[1] + v1.e[2] * v2.e[2]
     }
 }
 
 impl ops::Add for Vec3 {
     type Output = Self;
 
-    fn add(self, _rhs: Vec3) -> Self::Output {
+    #[inline]
+    fn add(self, rhs: Vec3) -> Self::Output {
         Vec3 {
             e: [
-                self.e[0] + _rhs.e[0],
-                self.e[1] + _rhs.e[1],
-                self.e[2] + _rhs.e[2],
+                self.e[0] + rhs.e[0],
+                self.e[1] + rhs.e[1],
+                self.e[2] + rhs.e[2],
             ],
+        }
+    }
+}
+
+impl ops::Mul<Vec3> for f32 {
+    type Output = Vec3;
+
+    fn mul(self, rhs: Vec3) -> Self::Output {
+        Vec3 {
+            e: [rhs.e[0] * self, rhs.e[1] * self, rhs.e[2] * self],
         }
     }
 }
@@ -61,6 +84,7 @@ impl ops::Add for Vec3 {
 impl ops::Mul<f32> for Vec3 {
     type Output = Self;
 
+    #[inline]
     fn mul(self, rhs: f32) -> Self::Output {
         Vec3 {
             e: [self.e[0] * rhs, self.e[1] * rhs, self.e[2] * rhs],
@@ -71,10 +95,38 @@ impl ops::Mul<f32> for Vec3 {
 impl ops::Div<f32> for Vec3 {
     type Output = Self;
 
+    #[inline]
     fn div(self, rhs: f32) -> Self::Output {
         let k: f32 = 1.0 / rhs;
         Vec3 {
             e: [self.e[0] * k, self.e[1] * k, self.e[2] * k],
+        }
+    }
+}
+
+// impl ops::Div<Vec3> for f32{
+//     type Output = Vec3;
+
+//     fn div(self, rhs: Vec3) -> Self::Output {
+//         Vec3{
+//             e: [
+
+//             ]
+//         }
+//     }
+// }
+
+impl ops::Sub for Vec3 {
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: Self) -> Self::Output {
+        Vec3 {
+            e: [
+                self.e[0] - rhs.e[0],
+                self.e[1] - rhs.e[1],
+                self.e[2] - rhs.e[2],
+            ],
         }
     }
 }
@@ -99,5 +151,13 @@ mod tests {
     #[test]
     fn test_vec3_div() {
         assert_eq!(Vec3::new(8.0, 4.0, 2.0) / 2.0, Vec3::new(4.0, 2.0, 1.0))
+    }
+
+    #[test]
+    fn test_dot_product() {
+        let v1 = Vec3::new(1.0, 2.0, 3.0);
+        let v2 = Vec3::new(4.0, -5.0, 6.0);
+        let result = Vec3::dot(&v1, &v2);
+        assert_eq!(result, 12.0); // 1*4 + 2*(-5) + 3*6 = 12
     }
 }
