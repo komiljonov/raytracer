@@ -6,6 +6,7 @@
 mod camera;
 mod hittable;
 mod hittable_list;
+mod material;
 mod ray;
 mod sphere;
 mod vec3;
@@ -13,20 +14,25 @@ mod vec3;
 use camera::Camera;
 use hittable::{HitRecord, Hittable};
 use hittable_list::HittableList;
+use material::scatter;
 use ray::Ray;
 use sphere::Sphere;
 use vec3::Vec3;
 
 use rand::prelude::*;
 
-fn color(r: &Ray, world: &HittableList) -> Vec3 {
-    let mut rec = HitRecord::default();
+fn color(r: &Ray, world: &HittableList, depth: i32) -> Vec3 {
+    let _rec = HitRecord::default();
 
-    if world.hit(&r, 0.0, std::f32::MAX, &mut rec) {
+    if let Some(rec) = world.hit(&r, 0.001, std::f32::MAX) {
+        let mut scattered = Ray::new(Vec3::default(), Vec3::default());
+        let mut attenuation = Vec3::default();
 
-        let target = rec.p() + rec.normal() + random_in_unit_sphere();
-
-        return 0.5 * color(&Ray::new(rec.p(), target-rec.p()), world);
+        if depth < 50 && scatter(&rec.material, r, &rec, &mut attenuation, &mut scattered) {
+            return attenuation * color(&scattered, world, depth + 1);
+        } else {
+            return Vec3::new(0.0, 0.0, 0.0);
+        }
 
         // return 0.5
         //     * Vec3::new(
@@ -47,31 +53,56 @@ fn random_in_unit_sphere() -> Vec3 {
     let mut rng = rand::thread_rng();
 
     loop {
-        p = 2.0 * Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) - Vec3::new(1.0,1.0, 1.0);
+        p = 2.0 * Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>())
+            - Vec3::new(1.0, 1.0, 1.0);
 
-
-        if p.squared_length() < 1.0{
+        if p.squared_length() < 1.0 {
             return p;
         }
-
     }
 }
 
 fn main() {
     //println!("A raytracer in Rust!");
 
-    let width = 200;
-    let height = 100;
+    let width = 800;
+    let height = 400;
     let samples = 100;
     let max_value = 255;
 
     let mut list: Vec<Box<dyn Hittable>> = Vec::new();
 
-    list.push(Box::new(Sphere::sphere(Vec3::new(0.0, 0.0, -1.0), 0.5)));
+    list.push(Box::new(Sphere::sphere(
+        Vec3::new(0.0, 0.0, -1.0),
+        0.5,
+        material::Material::Lambertian {
+            albedo: Vec3::new(0.1, 0.2, 0.5),
+        },
+    )));
+
     list.push(Box::new(Sphere::sphere(
         Vec3::new(0.0, -100.5, -1.0),
-        100.0,
+        100f32,
+        material::Material::Lambertian {
+            albedo: Vec3::new(0.8, 0.8, 0.0),
+        },
     )));
+
+    list.push(Box::new(Sphere::sphere(
+        Vec3::new(1.0, 0.0, -1.0),
+        0.5,
+        material::Material::Metal {
+            albedo: Vec3::new(0.8, 0.6, 0.2),
+            fuzz: 0.0
+        },
+    )));
+
+    list.push(Box::new(Sphere::sphere(
+        Vec3::new(-1.0, 0.0, -1.0),
+        0.5,
+        material::Material::Dielectric { ref_idx: 1.5 },
+    )));
+
     let world = HittableList::new(list);
 
     let camera = Camera::new();
@@ -91,12 +122,12 @@ fn main() {
 
                 let r = &camera.get_ray(u, v);
 
-                col = col + color(&r, &world);
+                col = col + color(&r, &world, 0);
             }
 
             col = col / samples as f32;
 
-            col = Vec3::new(col.r().sqrt() ,col.g().sqrt(), col.b().sqrt());
+            col = Vec3::new(col.r().sqrt(), col.g().sqrt(), col.b().sqrt());
 
             let ir = (255.99 * col.r()) as i32;
             let ig = (255.99 * col.g()) as i32;
