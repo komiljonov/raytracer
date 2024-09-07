@@ -1,9 +1,12 @@
-use std::sync::Arc;
+use indicatif::ProgressBar;
+use rand::prelude::*;
 use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
-use indicatif::ProgressBar;
 use std::cell::RefCell;
-use rand::prelude::*;
+use std::env;
+use std::fs::File;
+use std::io::{self, Write};
+use std::sync::Arc;
 
 mod camera;
 mod hittable;
@@ -52,7 +55,8 @@ fn random_in_unit_sphere() -> Vec3 {
         let unit_vec = Vec3::new(1.0, 1.0, 1.0);
 
         loop {
-            let p = 2.0 * Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) - unit_vec;
+            let p =
+                2.0 * Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>()) - unit_vec;
             if p.squared_length() < 1.0 {
                 return p;
             }
@@ -60,77 +64,135 @@ fn random_in_unit_sphere() -> Vec3 {
     })
 }
 
-fn main() {
-    let width = 800;
-    let height = 400;
-    let samples = 100;
+fn main() -> io::Result<()> {
+    let width = 720;
+    let height = 1024;
+    let samples = 500;
     let max_value = 255;
-    
+
     // Set the number of worker threads
-    let num_threads = 16;
+    let num_threads = 8;
 
     let mut list: Vec<Box<dyn Hittable + Send + Sync>> = Vec::new();
 
+    let mut rng = rand::thread_rng();
+
     list.push(Box::new(Sphere::sphere(
-        Vec3::new(0.0, 0.0, -1.0),
-        0.5,
+        Vec3::new(0.0, -1000.0, -1.0),
+        1000.0,
         material::Material::Lambertian {
-            albedo: Vec3::new(0.1, 0.2, 0.5),
+            albedo: Vec3::new(0.5, 0.5, 0.5),
+        },
+    )));
+
+    for a in -11..11 {
+        for b in -11..11 {
+            let choose_mat = rng.gen::<f32>();
+            let center = Vec3::new(
+                a as f32 + 0.9 * rng.gen::<f32>(),
+                0.2,
+                b as f32 + 0.9 * rng.gen::<f32>(),
+            );
+            if (center - Vec3::new(4.0, 0.2, 0.0)).length() > 0.9 {
+                if choose_mat < 0.8 {
+                    // diffuse
+                    list.push(Box::new(Sphere::sphere(
+                        center,
+                        0.2,
+                        material::Material::Lambertian {
+                            albedo: Vec3::new(
+                                rng.gen::<f32>() * rng.gen::<f32>(),
+                                rng.gen::<f32>() * rng.gen::<f32>(),
+                                rng.gen::<f32>() * rng.gen::<f32>(),
+                            ),
+                        },
+                    )));
+                } else if choose_mat < 0.95 {
+                    //metal
+                    list.push(Box::new(Sphere::sphere(
+                        center,
+                        0.2,
+                        material::Material::Metal {
+                            albedo: Vec3::new(
+                                0.5 * (1.0 + rng.gen::<f32>()),
+                                0.5 * (1.0 + rng.gen::<f32>()),
+                                0.5 * (1.0 + rng.gen::<f32>()),
+                            ),
+                            fuzz: (0.5 * rng.gen::<f32>()),
+                        },
+                    )));
+                } else {
+                    //glass
+                    list.push(Box::new(Sphere::sphere(
+                        center,
+                        0.2,
+                        material::Material::Dielectric { ref_idx: 1.5 },
+                    )));
+                }
+            }
+        }
+    }
+
+    list.push(Box::new(Sphere::sphere(
+        Vec3::new(0.0, 1.0, 0.0),
+        1.0,
+        material::Material::Dielectric { ref_idx: 1.5 },
+    )));
+
+    list.push(Box::new(Sphere::sphere(
+        Vec3::new(-4.0, 1.0, 0.0),
+        1.0,
+        material::Material::Lambertian {
+            albedo: Vec3::new(0.4, 0.2, 0.1),
         },
     )));
 
     list.push(Box::new(Sphere::sphere(
-        Vec3::new(0.0, -100.5, -1.0),
-        100f32,
-        material::Material::Lambertian {
-            albedo: Vec3::new(0.8, 0.8, 0.0),
-        },
-    )));
-
-    list.push(Box::new(Sphere::sphere(
-        Vec3::new(1.0, 0.0, -1.0),
-        0.5,
+        Vec3::new(4.0, 1.0, 0.0),
+        1.0,
         material::Material::Metal {
-            albedo: Vec3::new(0.8, 0.6, 0.2),
-            fuzz: 0.3,
+            albedo: Vec3::new(0.7, 0.6, 0.5),
+            fuzz: 0.0,
         },
-    )));
-
-    list.push(Box::new(Sphere::sphere(
-        Vec3::new(-1.0, 0.0, -1.0),
-        0.5,
-        material::Material::Dielectric { ref_idx: 1.5 },
-    )));
-    list.push(Box::new(Sphere::sphere(
-        Vec3::new(-1.0, 0.0, -1.0),
-        -0.45,
-        material::Material::Dielectric { ref_idx: 1.5 },
     )));
 
     let world = Arc::new(HittableList::new(list));
 
-    let look_from = Vec3::new(3.0, 3.0, 2.0);
-    let look_at = Vec3::new(0.0, 0.0, -1.0);
+    let look_from = Vec3::new(13.0, 2.0, 3.0);
+    let look_at = Vec3::new(0.0, 0.0, 0.0);
 
-    let dist_to_focus = (look_from - look_at).length();
-    let aperture = 2.0;
+    // let dist_to_focus = (look_from - look_at).length();
+    let dist_to_focus = 10.0;
+    let aperture = 0.1;
+
+    let vup = Vec3::new(0.0, 1.0, 0.0);
 
     let camera = Camera::new(
         look_from,
         look_at,
-        Vec3::new(0.0, 1.0, 0.0),
+        vup,
         20.0,
         width as f32 / height as f32,
         aperture,
         dist_to_focus,
     );
 
-    let bar = ProgressBar::new((height * width + 1) as u64);
-    bar.inc(1);
-    println!("P3\n{} {}\n{}", width, height, max_value);
+    let bar = ProgressBar::new((height * width) as u64);
+    // bar.inc(1);
+
+    // Get the output file name from the command-line arguments or default to "res.ppm"
+    let args: Vec<String> = env::args().collect();
+    let filename = if args.len() > 1 { &args[1] } else { "res.ppm" };
+
+    let mut file = File::create(filename)?;
+
+    writeln!(file, "P3\n{} {}\n{}", width, height, max_value)?;
 
     // Build a custom thread pool with the specified number of threads
-    let pool = ThreadPoolBuilder::new().num_threads(num_threads).build().unwrap();
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build()
+        .unwrap();
 
     let pixels: Vec<Vec3> = pool.install(|| {
         (0..height)
@@ -143,8 +205,12 @@ fn main() {
                         let mut col = Vec3::default();
 
                         for _ in 0..samples {
-                            let u = (i as f32 + THREAD_RNG.with(|rng| rng.borrow_mut().gen::<f32>())) / width as f32;
-                            let v = (j as f32 + THREAD_RNG.with(|rng| rng.borrow_mut().gen::<f32>())) / height as f32;
+                            let u = (i as f32
+                                + THREAD_RNG.with(|rng| rng.borrow_mut().gen::<f32>()))
+                                / width as f32;
+                            let v = (j as f32
+                                + THREAD_RNG.with(|rng| rng.borrow_mut().gen::<f32>()))
+                                / height as f32;
 
                             let r = camera.get_ray(u, v);
                             col = col + color(&r, &world, 0);
@@ -167,6 +233,8 @@ fn main() {
         let ig = (255.99 * pixel.g()) as i32;
         let ib = (255.99 * pixel.b()) as i32;
 
-        println!("{} {} {}", ir, ig, ib);
+        writeln!(file, "{} {} {}", ir, ig, ib)?;
     }
+
+    Ok(())
 }
